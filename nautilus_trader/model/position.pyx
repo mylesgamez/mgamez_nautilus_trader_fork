@@ -29,6 +29,8 @@ from nautilus_trader.model.instruments.base cimport Instrument
 from nautilus_trader.model.objects cimport Price
 from nautilus_trader.model.objects cimport Quantity
 
+from nautilus_trader.model.tax_lot_accounting import TaxLot
+
 
 cdef class Position:
     """
@@ -51,6 +53,9 @@ cdef class Position:
     ValueError
         If `event.position_id` is ``None``.
     """
+
+    cdef:
+        public list tax_lots
 
     def __init__(
         self,
@@ -95,6 +100,7 @@ cdef class Position:
         self.quote_currency = instrument.quote_currency
         self.base_currency = instrument.get_base_currency()  # Can be None
         self.settlement_currency = instrument.get_settlement_currency()
+        self.tax_lots = []
 
         self.realized_return = 0.0
         self.realized_pnl = None
@@ -474,6 +480,9 @@ cdef class Position:
                 f"invalid `OrderSide`, was {fill.order_side}",  # pragma: no cover (design-time error)
             )
 
+        # Update tax lots
+        self._update_tax_lots(fill)
+
         # Set quantities
         self.quantity = Quantity(abs(self.signed_qty), self.size_precision)
         if self.quantity._mem.raw > self.peak_qty._mem.raw:
@@ -493,6 +502,20 @@ cdef class Position:
             self.duration_ns = self.ts_closed - self.ts_opened
 
         self.ts_last = fill.ts_event
+
+    cdef void _update_tax_lots(self, OrderFilled fill):
+        if fill.order_side == OrderSide.BUY:
+            self.tax_lots.append(TaxLot(fill.last_qty, fill.last_px, fill.ts_event))
+        else:
+            remaining_qty = fill.last_qty
+            while remaining_qty > Quantity.zero() and self.tax_lots:
+                lot = self.tax_lots[0]
+                if lot.quantity <= remaining_qty:
+                    remaining_qty -= lot.quantity
+                    self.tax_lots.pop(0)
+                else:
+                    lot.quantity -= remaining_qty
+                    remaining_qty = Quantity.zero()
 
     cpdef Money notional_value(self, Price last):
         """

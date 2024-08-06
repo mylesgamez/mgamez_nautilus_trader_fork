@@ -101,6 +101,9 @@ from nautilus_trader.model.orders.market cimport MarketOrder
 from nautilus_trader.model.position cimport Position
 from nautilus_trader.portfolio.base cimport PortfolioFacade
 
+from nautilus_trader.model.tax_lot_accounting import TaxLot
+from nautilus_trader.model.tax_lot_accounting import TaxLotAccounting
+
 
 cdef class Strategy(Actor):
     """
@@ -134,6 +137,9 @@ cdef class Strategy(Actor):
     - Do not call components such as `clock` and `logger` in the `__init__` prior to registration.
     """
 
+    cdef:
+        TaxLotAccounting tax_lot_accounting
+
     def __init__(self, config: StrategyConfig | None = None):
         if config is None:
             config = StrategyConfig()
@@ -166,6 +172,8 @@ cdef class Strategy(Actor):
         self.register_warning_event(OrderRejected)
         self.register_warning_event(OrderCancelRejected)
         self.register_warning_event(OrderModifyRejected)
+
+        self.tax_lot_accounting = TaxLotAccounting()
 
     def _parse_external_order_claims(
         self,
